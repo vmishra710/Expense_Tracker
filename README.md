@@ -89,5 +89,3 @@ Expense_Tracker/
 **Vaibhav Mishra**  
 Backend Developer | Python & FastAPI Enthusiast  
 [GitHub Profile](https://github.com/vmishra710)
-
-Let me know if you want to add badges, a demo GIF, or deployment instructions. This README will make your repo shine!
