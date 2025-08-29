@@ -40,11 +40,32 @@ async def create_expense(request : CreateExpenseRequest,
     return expense_model
 
 @router.get('/my_expenses', status_code = status.HTTP_200_OK)
-async def get_expenses(user : user_dependency, db : db_dependency):
+async def get_expenses(user : user_dependency,
+                       db : db_dependency,
+                       limit : int = Query(5, ge=0, le=50, description='Number of expenses to return'),
+                       offset : int = Query(0, ge=0, description='Number of expenses to skip')
+                       ):
     if user is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Invalid User')
-    expenses = db.query(Expense).filter_by(owner_id=user.get('id')).all()
-    return expenses
+
+    total_count = db.query(Expense).filter_by(owner_id=user.get('id')).count()
+
+    expenses = db.query(Expense)\
+        .filter_by(owner_id=user.get('id'))\
+        .order_by(Expense.date.desc())\
+        .offset(offset)\
+        .limit(limit)\
+        .all()
+
+    has_more = offset + len(expenses) < total_count
+
+    return {
+        'total_count' : total_count,
+        'limit' : limit,
+        'offset' : offset,
+        'has_more' : has_more,
+        'expenses' : expenses
+    }
 
 @router.put('/update_expense/{expense_id}', status_code = status.HTTP_201_CREATED)
 async def update_expenses(request : UpdatedExpense,
