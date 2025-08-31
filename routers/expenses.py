@@ -113,31 +113,60 @@ async def get_expense_summary(db : db_dependency, user : user_dependency):
     return [{'category' : row[0], 'total_spent' : row[1]} for row in result.fetchall()]
 
 @router.get('/filter_expenses', status_code = status.HTTP_200_OK)
-async def filter_expenses(db : db_dependency, user : user_dependency,
+async def filter_expenses(db : db_dependency,
+                          user : user_dependency,
                           start_date : date = Query(...,description='Start Date in YYYY-MM-DD'),
-                          end_date : date = Query(...,description='End Date in YYYY-MM-DD')):
-    query = text("""
+                          end_date : date = Query(...,description='End Date in YYYY-MM-DD'),
+                          limit : int = Query(5, ge=1, le=50, description='Number of expenses to return'),
+                          offset : int = Query(0, gt=0, description='Number of expenses to skip')):
+
+    count_query = text("""
+        SELECT COUNT(*) FROM expenses
+        WHERE owner_id = :owner_id
+        AND date BETWEEN :start_date AND :end_date
+    """)
+    count_result = db.execute(count_query, {
+        'owner_id': user.get('id'),
+        'start_date': start_date,
+        'end_date': end_date
+    })
+    total_count = count_result.scalar()
+
+    data_query = text("""
         SELECT id, amount, category, description, date
         FROM expenses
         Where owner_id = :owner_id
         AND date BETWEEN :start_date AND :end_date
         ORDER BY date ASC
+        LIMIT :limit 
+        OFFSET :offset
     """)
 
-    result = db.execute(query,{
+    result = db.execute(data_query,{
         'owner_id' : user.get('id'),
         'start_date' : start_date,
-        'end_date' : end_date
+        'end_date' : end_date,
+        'limit' : limit,
+        'offset' : offset
     })
 
-    return [{
-        'id' : row[0],
-        'amount' : row[1],
-        'category' : row[2],
-        'description' : row[3],
-        'date' : row[3]
-    }  for row in result.fetchall()]
+    has_more = offset + limit < total_count
 
+    return {
+        'total_count' : total_count,
+        'limit' : limit,
+        'offset' : offset,
+        'has_more' : has_more,
+        'expenses' : [
+            {
+            'id' : row[0],
+            'amount' : row[1],
+            'category' : row[2],
+            'description' : row[3],
+            'date' : row[4]
+            }  for row in result.fetchall()
+        ]
+    }
 
 @router.get('/top_categories', status_code=status.HTTP_200_OK)
 async def top_spending_categories(db : db_dependency, user : user_dependency,
