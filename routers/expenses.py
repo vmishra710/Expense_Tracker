@@ -3,9 +3,9 @@ from fastapi import APIRouter, HTTPException, Path, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 from starlette import status
-
 from dependencies import user_dependency, db_dependency
 from models import Expense
+from pagination import paginate_query_result
 
 router = APIRouter(
     prefix='/expenses',
@@ -57,15 +57,7 @@ async def get_expenses(user : user_dependency,
         .limit(limit)\
         .all()
 
-    has_more = offset + len(expenses) < total_count
-
-    return {
-        'total_count' : total_count,
-        'limit' : limit,
-        'offset' : offset,
-        'has_more' : has_more,
-        'expenses' : expenses
-    }
+    return paginate_query_result(expenses, total_count, limit, offset)
 
 @router.put('/update_expense/{expense_id}', status_code = status.HTTP_201_CREATED)
 async def update_expenses(request : UpdatedExpense,
@@ -150,23 +142,18 @@ async def filter_expenses(db : db_dependency,
         'offset' : offset
     })
 
-    has_more = offset + limit < total_count
+    expenses = [
+        {
+            'id': row[0],
+            'amount': row[1],
+            'category': row[2],
+            'description': row[3],
+            'date': row[4]
+        } for row in result.fetchall()
+    ]
 
-    return {
-        'total_count' : total_count,
-        'limit' : limit,
-        'offset' : offset,
-        'has_more' : has_more,
-        'expenses' : [
-            {
-            'id' : row[0],
-            'amount' : row[1],
-            'category' : row[2],
-            'description' : row[3],
-            'date' : row[4]
-            }  for row in result.fetchall()
-        ]
-    }
+    return paginate_query_result(expenses, total_count, limit, offset)
+
 
 @router.get('/top_categories', status_code=status.HTTP_200_OK)
 async def top_spending_categories(db : db_dependency, user : user_dependency,
