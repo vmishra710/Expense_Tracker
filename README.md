@@ -10,7 +10,10 @@ A secure, modular, and scalable backend API built with FastAPI to help users man
 
 - 🔐 JWT-based user authentication
 - 👤 User registration and login
-- 💰 Create, update, delete, and view expenses
+- 💰 CRUD operations for Expenses
+- 🔄 Pagination with metadata
+- 🧱 Dependency injection for clean code
+- 🔒 Secure password hashing with bcrypt
 - 📅 Filter expenses by date range
 - 📊 View top N spending categories
 - 📈 Category-wise expense summaries
@@ -40,6 +43,7 @@ Expense_Tracker/
 ├── security.py         # Password hashing and token logic
 ├── config.py           # Configuration settings
 ├── main.py             # FastAPI app entry point
+├── pagination.py       # Pagination utility with metadata
 ```
 
 ---
