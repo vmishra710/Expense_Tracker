@@ -4,6 +4,8 @@
 
 A secure, modular, and scalable backend API built with FastAPI to help users manage and analyze their personal expenses. This project demonstrates authentication, CRUD operations, SQL aggregation, and raw query handling—all wrapped in clean architecture.
 
+Deployed = https://expense-tracker-5od7.onrender.com
+
 ---
 
 ## 🚀 Features
