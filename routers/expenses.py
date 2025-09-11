@@ -1,10 +1,13 @@
 from datetime import date
+from typing import Optional
+
 from fastapi import APIRouter, HTTPException, Path, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 from starlette import status
 from dependencies import user_dependency, db_dependency
-from models import Expense
+from models import Expense, Category
 from pagination import paginate_query_result
 
 router = APIRouter(
@@ -13,14 +16,36 @@ router = APIRouter(
 )
 
 class CreateExpenseRequest(BaseModel):
-    amount : int = Field(gt=0)
-    category : str
-    description : str
+    amount : float = Field(gt=0)
+    category_name : str
+    description : Optional[str] = None
 
 class UpdatedExpense(BaseModel):
-    amount : int = Field(gt=0)
-    category : str
-    description : str
+    amount : float = Field(gt=0)
+    category_name : str
+    description : Optional[str] = None
+
+def get_or_create_category(db, user_id : int, name : str) -> Category:
+    name = name.strip()
+
+    #try to find existing
+    category = db.query(Category).filter_by(owner_id = user_id, name = name).first()
+    if category:
+        return category
+
+    #create new
+    category = Category(name = name, owner_id = user_id)
+    db.add(category)
+
+    try:
+        db.commit()
+        db.refresh(category)
+        return category
+    except IntegrityError:
+        #concurrent create -> rollback and re-fetch
+        db.rollback()
+        return db.query(Category).filter_by(owner_id = user_id, name = name).first()
+
 
 @router.post('/new_expense', status_code = status.HTTP_201_CREATED)
 async def create_expense(request : CreateExpenseRequest,
@@ -28,16 +53,27 @@ async def create_expense(request : CreateExpenseRequest,
                          db : db_dependency):
     if user is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Invalid User')
+
+    #ensure category exists for this user or else create it
+    category = get_or_create_category(db, user.get('id'), request.category_name)
+
     expense_model = Expense(
         amount = request.amount,
-        category = request.category,
+        category_id = category.id,
         description = request.description,
         owner_id = user.get('id')
     )
     db.add(expense_model)
     db.commit()
     db.refresh(expense_model)
-    return expense_model
+
+    return {
+        "id" : expense_model.id,
+        "amount" : expense_model.amount,
+        "description" : expense_model.description,
+        "category" : category.name,
+        "date" : expense_model.date
+    }
 
 @router.get('/my_expenses', status_code = status.HTTP_200_OK)
 async def get_expenses(user : user_dependency,
@@ -57,7 +93,17 @@ async def get_expenses(user : user_dependency,
         .limit(limit)\
         .all()
 
-    return paginate_query_result(expenses, total_count, limit, offset)
+    response = [
+        {
+            "id" : e.id,
+            "amount" : e.amount,
+            "description" : e.description,
+            "category" : e.category.name if e.category else None,
+            "date" : e.date
+        } for e in expenses
+    ]
+
+    return paginate_query_result(response, total_count, limit, offset)
 
 @router.put('/update_expense/{expense_id}', status_code = status.HTTP_201_CREATED)
 async def update_expenses(request : UpdatedExpense,
@@ -70,16 +116,24 @@ async def update_expenses(request : UpdatedExpense,
     if expense_model is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Expense Not Found')
 
+    category = get_or_create_category(db, user.get('id'), request.category_name)
+
     expense_model.amount = request.amount
-    expense_model.category=request.category
+    expense_model.category_id=category.id
     expense_model.description=request.description
 
     db.add(expense_model)
     db.commit()
     db.refresh(expense_model)
-    return expense_model
+    return {
+        "id": expense_model.id,
+        "amount": expense_model.amount,
+        "description": expense_model.description,
+        "category": category.name,
+        "date": expense_model.date
+    }
 
-@router.delete('/delete_expense/{expense_id}', status_code=status.HTTP_204_NO_CONTENT)
+@router.delete('/delete_expense/{expense_id}', status_code=status.HTTP_200_OK)
 async def delete_expense(expense_id : int, db : db_dependency, user:user_dependency):
     if user is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Invalid User')
@@ -87,6 +141,7 @@ async def delete_expense(expense_id : int, db : db_dependency, user:user_depende
     expense_model = db.query(Expense).filter_by(owner_id=user.get('id')).filter_by(id=expense_id).first()
     if expense_model is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Invalid Expense Id')
+
     db.delete(expense_model)
     db.commit()
     return {'message' : 'Expense deleted Successfully'}
@@ -94,13 +149,16 @@ async def delete_expense(expense_id : int, db : db_dependency, user:user_depende
 
 @router.get('/summary', status_code = status.HTTP_200_OK)
 async def get_expense_summary(db : db_dependency, user : user_dependency):
+
     query = text("""
-        SELECT category, SUM(amount) AS total_spent
-        FROM expenses
-        WHERE owner_id = :owner_id
-        GROUP BY category
+        SELECT c.name AS category, SUM(e.amount) AS total_spent
+        FROM expenses e
+        JOIN categories c ON e.category_id = c.id
+        WHERE e.owner_id = :owner_id
+        GROUP BY c.name
         ORDER BY total_spent DESC
     """)
+
     result = db.execute(query, {'owner_id':user.get('id')})
     return [{'category' : row[0], 'total_spent' : row[1]} for row in result.fetchall()]
 
@@ -110,10 +168,11 @@ async def filter_expenses(db : db_dependency,
                           start_date : date = Query(...,description='Start Date in YYYY-MM-DD'),
                           end_date : date = Query(...,description='End Date in YYYY-MM-DD'),
                           limit : int = Query(5, ge=1, le=50, description='Number of expenses to return'),
-                          offset : int = Query(0, gt=0, description='Number of expenses to skip')):
+                          offset : int = Query(0, ge=0, description='Number of expenses to skip')):
 
     count_query = text("""
-        SELECT COUNT(*) FROM expenses
+        SELECT COUNT(*) 
+        FROM expenses
         WHERE owner_id = :owner_id
         AND date BETWEEN :start_date AND :end_date
     """)
@@ -125,11 +184,12 @@ async def filter_expenses(db : db_dependency,
     total_count = count_result.scalar()
 
     data_query = text("""
-        SELECT id, amount, category, description, date
-        FROM expenses
-        Where owner_id = :owner_id
-        AND date BETWEEN :start_date AND :end_date
-        ORDER BY date ASC
+        SELECT e.id, e.amount, c.name, e.description, e.date
+        FROM expenses e
+        JOIN categories c ON e.category_id = c.id
+        Where e.owner_id = :owner_id
+        AND e.date BETWEEN :start_date AND :end_date
+        ORDER BY e.date ASC
         LIMIT :limit 
         OFFSET :offset
     """)
@@ -159,10 +219,11 @@ async def filter_expenses(db : db_dependency,
 async def top_spending_categories(db : db_dependency, user : user_dependency,
                                   top_limit : int = Query(..., description='Top N Spend Categories')):
     query = text("""
-        SELECT category, SUM(amount) AS total_spent
-        FROM expenses
-        WHERE owner_id = :owner_id
-        GROUP BY category
+        SELECT c.name AS category, SUM(e.amount) AS total_spent
+        FROM expenses e
+        JOIN categories c ON e.category_id = c.id
+        WHERE e.owner_id = :owner_id
+        GROUP BY c.name
         ORDER BY total_spent DESC
         LIMIT :top_limit
     """)
