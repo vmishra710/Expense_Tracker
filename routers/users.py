@@ -35,7 +35,7 @@ async def change_password(request : UserVerification,
     db.commit()
     return {'message' : 'Password Updated Successfully'}
 
-@router.delete('/delete_profile', status_code=status.HTTP_201_CREATED)
+@router.delete('/delete_profile', status_code=status.HTTP_204_NO_CONTENT)
 async def delete_profile(user : user_dependency, db : db_dependency,
                          request : DeleteProfileRequest):
     if user is None:
@@ -43,5 +43,8 @@ async def delete_profile(user : user_dependency, db : db_dependency,
     user_model = db.query(User).filter_by(id=user.get('id')).first()
     if verify_password(request.userPassword, user_model.hashed_password):
         db.delete(user_model)
-    db.commit()
-    return {'message' : 'User Deleted'}
+        db.commit()
+        return {'message': 'User Deleted'}
+    else :
+        raise HTTPException(status_code=401, detail='Invalid Password')
+
