@@ -1,0 +1,25 @@
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Virtual environment
+venv/
+env/
+.Python
+
+# PyCharm
+.idea/
+
+# Environment & DB files
+.env
+*.sqlite3
+*.db
+
+# Alembic cache (optional)
+alembic/versions/__pycache__/
+
+# OS files
+.DS_Store
+Thumbs.db
