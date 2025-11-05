@@ -24,10 +24,11 @@ def get_current_user(token : Annotated[str, Depends(oauth2_bearer)]):
         user_name : str = payload.get('email')
         user_id : int = payload.get('id')
         usercreated_at : datetime = datetime.fromisoformat(payload.get('created_at'))
+        user_role : str = payload.get('role')
 
         if user_id is None or user_name is None:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Invalid User')
-        return {'email':user_name, 'id':user_id, 'created_at':usercreated_at}
+        return {'email':user_name, 'id':user_id, 'created_at':usercreated_at, 'role': user_role}
 
     except JWTError:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Invalid User')

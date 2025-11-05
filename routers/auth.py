@@ -18,6 +18,7 @@ router = APIRouter(
 class CreateUserRequest(BaseModel):
     email : EmailStr
     password : str = Field(min_length=8, max_length=20)
+    role : str = Field(default='user')
 
 class Token(BaseModel):
     access_token:str
@@ -29,11 +30,12 @@ def authenticate_user(username:str, password:str, db):
         return user
     raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Invalid Credentials')
 
-def create_access_token(email:str, user_id:int, created_at: datetime):
+def create_access_token(email:str, user_id:int, created_at:datetime, user_role:str):
     encode = {
         'email':email,
         'id':user_id,
-        'created_at':created_at.isoformat()
+        'created_at':created_at.isoformat(),
+        'role' : user_role
     }
     expires = datetime.now(timezone.utc) + ACCESS_TOKEN_EXPIRES_MINUTES
     encode.update({'exp':expires})
@@ -47,7 +49,8 @@ async def create_user(db:db_dependency,
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Email already registered')
     create_user_model = User(
         email = create_user_request.email,
-        hashed_password = hash_password(create_user_request.password)
+        hashed_password = hash_password(create_user_request.password),
+        role = create_user_request.role
     )
     db.add(create_user_model)
     db.commit()
@@ -62,5 +65,5 @@ async def create_user(db:db_dependency,
 async def login_for_access_token(db:db_dependency,
                                  form_data: Annotated[OAuth2PasswordRequestForm, Depends()]):
     user = authenticate_user(form_data.username, form_data.password, db)
-    token = create_access_token(user.email, user.id, user.created_at)
+    token = create_access_token(user.email, user.id, user.created_at, user.role)
     return {'access_token' : token, 'token_type' : 'bearer'}
