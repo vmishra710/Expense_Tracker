@@ -3,10 +3,11 @@ from datetime import date
 from typing import Optional
 from fastapi import APIRouter, HTTPException, Path, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import text
+from sqlalchemy import text, select, func
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import selectinload
 from starlette import status
-from dependencies import user_dependency, db_dependency
+from dependencies import user_dependency, db_dependency, async_db_dependency
 from models import Expense, Category
 from pagination import paginate_query_result
 
@@ -47,15 +48,71 @@ def get_or_create_category(db, user_id : int, name : str) -> Category:
         return db.query(Category).filter_by(owner_id = user_id, name = name).first()
 
 
+async def get_or_create_category_async(db, user_id : int, name : str) -> Category:
+    name = name.strip()
+
+    # Try to find existing
+    result = await db.execute(
+        select(Category).filter_by(owner_id = user_id, name = name)
+    )
+
+    category = result.scalar_one_or_none()
+    if category:
+        return category
+
+    # Create new
+    category = Category(name = name, owner_id = user_id)
+    db.add(category)
+
+    try:
+        # Commit and refresh
+        await db.commit()
+        await db.refresh(category)
+        return category
+    except IntegrityError:
+        # Handle concurrent creation
+        await db.rollback()
+        result = await db.execute(select(Category).filter_by(owner_id = user_id, name = name))
+        return result.scalar_one_or_none()
+
+
+# @router.post('/new_expense', status_code = status.HTTP_201_CREATED)
+# async def create_expense(request : CreateExpenseRequest,
+#                          user : user_dependency,
+#                          db : db_dependency):
+#     if user is None:
+#         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Invalid User')
+#
+#     #ensure category exists for this user or else create it
+#     category = get_or_create_category(db, user.get('id'), request.category_name)
+#
+#     expense_model = Expense(
+#         amount = request.amount,
+#         category_id = category.id,
+#         description = request.description,
+#         owner_id = user.get('id')
+#     )
+#     db.add(expense_model)
+#     db.commit()
+#     db.refresh(expense_model)
+#
+#     return {
+#         "id" : expense_model.id,
+#         "amount" : expense_model.amount,
+#         "description" : expense_model.description,
+#         "category" : category.name,
+#         "date" : expense_model.date
+#     }
+
 @router.post('/new_expense', status_code = status.HTTP_201_CREATED)
 async def create_expense(request : CreateExpenseRequest,
                          user : user_dependency,
-                         db : db_dependency):
+                         db : async_db_dependency):
     if user is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Invalid User')
 
     #ensure category exists for this user or else create it
-    category = get_or_create_category(db, user.get('id'), request.category_name)
+    category = await get_or_create_category_async(db, user.get('id'), request.category_name)
 
     expense_model = Expense(
         amount = request.amount,
@@ -64,8 +121,8 @@ async def create_expense(request : CreateExpenseRequest,
         owner_id = user.get('id')
     )
     db.add(expense_model)
-    db.commit()
-    db.refresh(expense_model)
+    await db.commit()
+    await db.refresh(expense_model)
 
     return {
         "id" : expense_model.id,
@@ -75,23 +132,60 @@ async def create_expense(request : CreateExpenseRequest,
         "date" : expense_model.date
     }
 
+
+# @router.get('/my_expenses', status_code = status.HTTP_200_OK)
+# async def get_expenses(user : user_dependency,
+#                        db : db_dependency,
+#                        limit : int = Query(5, ge=0, le=50, description='Number of expenses to return'),
+#                        offset : int = Query(0, ge=0, description='Number of expenses to skip')
+#                        ):
+#     if user is None:
+#         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Invalid User')
+#
+#     total_count = db.query(Expense).filter_by(owner_id=user.get('id')).count()
+#
+#     expenses = db.query(Expense)\
+#         .filter_by(owner_id=user.get('id'))\
+#         .order_by(Expense.date.desc())\
+#         .offset(offset)\
+#         .limit(limit)\
+#         .all()
+#
+#     response = [
+#         {
+#             "id" : e.id,
+#             "amount" : e.amount,
+#             "description" : e.description,
+#             "category" : e.category.name if e.category else None,
+#             "date" : e.date
+#         } for e in expenses
+#     ]
+#
+#     return paginate_query_result(response, total_count, limit, offset)
+
 @router.get('/my_expenses', status_code = status.HTTP_200_OK)
 async def get_expenses(user : user_dependency,
-                       db : db_dependency,
+                       db : async_db_dependency,
                        limit : int = Query(5, ge=0, le=50, description='Number of expenses to return'),
                        offset : int = Query(0, ge=0, description='Number of expenses to skip')
                        ):
     if user is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Invalid User')
 
-    total_count = db.query(Expense).filter_by(owner_id=user.get('id')).count()
+    count_query = select(func.count(Expense.id)).filter_by(owner_id=user.get('id'))
+    total_result = await db.execute(count_query)
+    total_count = total_result.scalar() or 0
 
-    expenses = db.query(Expense)\
-        .filter_by(owner_id=user.get('id'))\
-        .order_by(Expense.date.desc())\
-        .offset(offset)\
-        .limit(limit)\
-        .all()
+    expenses_query = (
+        select(Expense)
+        .options(selectinload(Expense.category))
+        .filter_by(owner_id=user.get('id'))
+        .order_by(Expense.date.desc())
+        .offset(offset)
+        .limit(limit)
+    )
+    result = await db.execute(expenses_query)
+    expenses = result.scalars().all()
 
     response = [
         {
@@ -104,6 +198,7 @@ async def get_expenses(user : user_dependency,
     ]
 
     return paginate_query_result(response, total_count, limit, offset)
+
 
 @router.put('/update_expense/{expense_id}', status_code = status.HTTP_201_CREATED)
 async def update_expenses(request : UpdatedExpense,
