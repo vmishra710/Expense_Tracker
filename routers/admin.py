@@ -1,6 +1,5 @@
 from fastapi import APIRouter, HTTPException
 from starlette import status
-
 from dependencies import db_dependency, user_dependency
 from models import Expense
 

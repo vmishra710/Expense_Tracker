@@ -5,7 +5,7 @@ import models
 from database import Engine
 from dependencies import async_db_dependency
 from middlewares.rate_limiter import rate_limiter
-from routers import auth, users, expenses, admin
+from routers import auth, users, expenses, admin, reports
 from middlewares.middleware import log_requests
 from middlewares.custom_header import add_process_time_header
 
@@ -30,3 +30,4 @@ app.include_router(auth.router)
 app.include_router(users.router)
 app.include_router(expenses.router)
 app.include_router(admin.router)
+app.include_router(reports.router)
