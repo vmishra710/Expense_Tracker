@@ -1,0 +1,44 @@
+#version: "3.9"
+
+services:
+  api:
+    build: .
+    container_name: expense_api
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    depends_on:
+      - db
+      - redis
+
+  db:
+    image: postgres:15
+    container_name: expense_db
+    environment:
+      POSTGRES_DB: ExpenseTrackerDatabase
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7
+    container_name: expense_redis
+    ports:
+      - "6380:6379"
+
+  celery:
+    build: .
+    container_name: expense_celery
+    command: celery -A celery_app.celery_app worker --loglevel=info --pool=solo
+    env_file:
+      - .env
+    depends_on:
+      - redis
+      - db
+
+volumes:
+  postgres_data:

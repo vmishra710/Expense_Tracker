@@ -33,8 +33,7 @@ async def run_monthly_reports(
     for u in users:
         send_monthly_expense_report.delay(
             user_id = u.id,
-            year = year,
-            month = month
+            email = u.email
         )
 
     return {

@@ -2,17 +2,31 @@ from fastapi import FastAPI
 from fastapi.responses import RedirectResponse
 from sqlalchemy import text
 import models
-from database import Engine
+from database import Engine, async_engine, Base
 from dependencies import async_db_dependency
 from middlewares.rate_limiter import rate_limiter
 from routers import auth, users, expenses, admin, reports
 from middlewares.middleware import log_requests
 from middlewares.custom_header import add_process_time_header
+from contextlib import asynccontextmanager
 
+
+@asynccontextmanager
+async def lifespan(app : FastAPI):
+    # Startup logic
+    async with async_engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    yield # App runs here
+    # Shutdown logic - optional
 
 app = FastAPI(title='Expense Tracker API')
 
-models.Base.metadata.create_all(bind=Engine)
+# models.Base.metadata.create_all(bind=Engine)
+
+# @app.on_event("startup")
+# async def create_tables():
+#     async with async_engine.begin() as conn:
+#         await conn.run_sync(Base.metadata.create_all)
 
 @app.get('/', include_in_schema=False)
 def root():

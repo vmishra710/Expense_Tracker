@@ -7,7 +7,7 @@ from sqlalchemy.orm import sessionmaker
 
 SQLALCHEMY_DATABASE_URL =os.getenv(
     "DATABASE_URL", #Render will inject this
-    "postgresql://postgres:Admin%401234@localhost/ExpenseTrackerDatabase" #local fallback
+    "postgresql://postgres:postgres@db:5432/ExpenseTrackerDatabase" #local fallback
 )
 
 if SQLALCHEMY_DATABASE_URL.startswith("postgres://"):
