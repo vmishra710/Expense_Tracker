@@ -19,7 +19,10 @@ async def lifespan(app : FastAPI):
     yield # App runs here
     # Shutdown logic - optional
 
-app = FastAPI(title='Expense Tracker API')
+app = FastAPI(
+    title='Expense Tracker API',
+    lifespan=lifespan
+)
 
 # models.Base.metadata.create_all(bind=Engine)
 
