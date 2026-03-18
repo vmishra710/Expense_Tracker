@@ -1,7 +1,7 @@
 from celery import Celery
 import os
 
-REDIS_URL = os.getenv('REDIS_URL', 'redis://redis:6379')
+REDIS_URL = os.getenv('REDIS_URL', 'redis://localhost:6379')
 
 celery_app = Celery(
     'expense_tracker',

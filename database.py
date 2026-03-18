@@ -5,12 +5,9 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
 
-SQLALCHEMY_DATABASE_URL =os.getenv(
-    "DATABASE_URL", #Render will inject this
-    "postgresql://postgres:postgres@db:5432/ExpenseTrackerDatabase" #local fallback
-)
+SQLALCHEMY_DATABASE_URL =os.getenv("DATABASE_URL")
 
-if SQLALCHEMY_DATABASE_URL.startswith("postgres://"):
+if SQLALCHEMY_DATABASE_URL and SQLALCHEMY_DATABASE_URL.startswith("postgres://"):
     SQLALCHEMY_DATABASE_URL = SQLALCHEMY_DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
 
@@ -19,8 +16,6 @@ if SQLALCHEMY_DATABASE_URL.startswith("postgres://"):
 
 Engine = create_engine(SQLALCHEMY_DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=Engine)
-
-Base = declarative_base()
 
 #-------------------------- ASYNC DATABASE SETUP --------------------------
 
@@ -38,6 +33,9 @@ AsyncSessionLocal = sessionmaker(
     autoflush=False,
     autocommit=False
 )
+
+Base = declarative_base()
+
 
 
 
