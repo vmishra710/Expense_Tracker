@@ -1,9 +1,12 @@
 from celery import Celery
+import os
+
+REDIS_URL = os.getenv('REDIS_URL', 'redis://redis:6379')
 
 celery_app = Celery(
     'expense_tracker',
-    broker='redis://redis:6379/0',
-    backend='redis://redis:6379/1',
+    broker=REDIS_URL,
+    backend=REDIS_URL,
     include=['tasks.email_tasks']
 )
 
