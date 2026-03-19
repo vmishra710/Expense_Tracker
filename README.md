@@ -183,7 +183,6 @@ APP_PASSWORD=your_app_password
 
 ## 👨‍💻 Author
 
-**Vaibhav Mishra**
-Backend Developer | Python & FastAPI
+**Vaibhav Mishra** - Backend Developer | Python & FastAPI
 
 🔗 https://github.com/vmishra710
